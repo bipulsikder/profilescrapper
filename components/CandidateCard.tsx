@@ -1,5 +1,5 @@
 import React from 'react'
-import { ExternalLink, Save, MapPin, Award } from 'lucide-react'
+import { ExternalLink, Save, MapPin } from 'lucide-react'
 
 type Props = {
   name: string
@@ -11,21 +11,7 @@ type Props = {
   rank?: number
 }
 
-export default function CandidateCard({ name, snippet, url, location, similarity, onSave, rank }: Props) {
-  const getSimilarityColor = (score: number) => {
-    if (score >= 80) return 'from-green-500 to-emerald-600'
-    if (score >= 60) return 'from-yellow-500 to-orange-600'
-    if (score >= 40) return 'from-orange-500 to-red-600'
-    return 'from-red-500 to-red-700'
-  }
-
-  const getSimilarityLabel = (score: number) => {
-    if (score >= 80) return 'Excellent Match'
-    if (score >= 60) return 'Good Match'
-    if (score >= 40) return 'Fair Match'
-    return 'Basic Match'
-  }
-
+export default function CandidateCard({ name, snippet, url, location, onSave, rank }: Props) {
   return (
     <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:border-purple-400/50 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/20 group">
       {/* Rank Badge */}
@@ -35,18 +21,8 @@ export default function CandidateCard({ name, snippet, url, location, similarity
             <div className="w-6 h-6 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full flex items-center justify-center text-xs font-bold">
               {rank}
             </div>
-            <span className="text-purple-300 text-xs font-medium">Top Match</span>
+            <span className="text-purple-300 text-xs font-medium">Candidate</span>
           </div>
-          
-          {/* Similarity Score */}
-          {typeof similarity === 'number' && (
-            <div className="flex items-center gap-2">
-              <div className={`px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${getSimilarityColor(similarity)} text-white`}>
-                {Math.round(similarity)}%
-              </div>
-              <Award className="w-4 h-4 text-yellow-400" />
-            </div>
-          )}
         </div>
       )}
 
@@ -56,11 +32,6 @@ export default function CandidateCard({ name, snippet, url, location, similarity
           <h3 className="text-lg font-semibold text-white group-hover:text-purple-300 transition-colors">
             {name}
           </h3>
-          {typeof similarity === 'number' && (
-            <p className="text-sm text-purple-300 font-medium">
-              {getSimilarityLabel(similarity)}
-            </p>
-          )}
         </div>
 
         {location && (

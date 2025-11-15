@@ -601,49 +601,99 @@ type Candidate = {
   embedding?: number[];
 };
 
-async function searchLinkedInProfiles(query: string, num: number = 30): Promise<Candidate[]> {
+async function searchLinkedInProfiles(query: string, num: number = 100): Promise<Candidate[]> {
   const withSiteFilter = /site:\s*linkedin\.com\/in/i.test(query) ? query : `site:linkedin.com/in ${query}`;
+  const allCandidates: Candidate[] = [];
+  const seen = new Set<string>();
+  
+  // Helper function to add unique candidates
+  const addUniqueCandidates = (candidates: Candidate[]) => {
+    for (const candidate of candidates) {
+      if (!seen.has(candidate.url)) {
+        seen.add(candidate.url);
+        allCandidates.push(candidate);
+      }
+    }
+  };
+
+  // Try SerpAPI first with pagination
   if (SERPAPI_KEY) {
-    const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(withSiteFilter)}&num=${Math.min(num, 50)}&hl=en&gl=in&api_key=${SERPAPI_KEY}`;
-    const resp = await fetch(url);
-    if (resp.ok) {
-      const data = await resp.json() as any;
-      const items: any[] = data.organic_results || [];
-      const candidates: Candidate[] = items
-        .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
-        .map(i => ({
-          name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
-          snippet: i.snippet || i.description || '',
-          url: i.link,
-          location: null,
-        }));
-      if (candidates.length) return candidates.slice(0, num);
+    try {
+      // Get first page
+      let url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(withSiteFilter)}&num=100&hl=en&gl=in&api_key=${SERPAPI_KEY}`;
+      let resp = await fetch(url);
+      if (resp.ok) {
+        let data = await resp.json() as any;
+        let items: any[] = data.organic_results || [];
+        let candidates: Candidate[] = items
+          .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
+          .map(i => ({
+            name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
+            snippet: i.snippet || i.description || '',
+            url: i.link,
+            location: null,
+          }));
+        addUniqueCandidates(candidates);
+        
+        // Get additional pages if available and we need more candidates
+        let page = 2;
+        while (allCandidates.length < num && data.serpapi_pagination?.next && page <= 3) {
+          url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(withSiteFilter)}&num=100&start=${(page-1)*100}&hl=en&gl=in&api_key=${SERPAPI_KEY}`;
+          resp = await fetch(url);
+          if (resp.ok) {
+            data = await resp.json() as any;
+            items = data.organic_results || [];
+            candidates = items
+              .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
+              .map(i => ({
+                name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
+                snippet: i.snippet || i.description || '',
+                url: i.link,
+                location: null,
+              }));
+            addUniqueCandidates(candidates);
+            page++;
+          } else {
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      console.log('SerpAPI pagination error:', error);
     }
   }
-  if (GOOGLE_API_KEY && GOOGLE_CX_ID) {
-    const params = new URLSearchParams({
-      key: GOOGLE_API_KEY,
-      cx: GOOGLE_CX_ID,
-      q: withSiteFilter,
-      num: String(Math.min(num, 50)),
-      gl: 'in',
-      lr: 'lang_en',
-    });
-    const resp = await fetch(`${GOOGLE_SEARCH_URL}?${params.toString()}`);
-    if (resp.ok) {
-      const data = (await resp.json()) as any;
-      const items: any[] = data.items || [];
-      const candidates: Candidate[] = items
-        .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
-        .map(i => ({
-          name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
-          snippet: i.snippet || '',
-          url: i.link,
-          location: null,
-        }));
-      if (candidates.length) return candidates;
+
+  // Try Google Custom Search API
+  if (GOOGLE_API_KEY && GOOGLE_CX_ID && allCandidates.length < num) {
+    try {
+      const params = new URLSearchParams({
+        key: GOOGLE_API_KEY,
+        cx: GOOGLE_CX_ID,
+        q: withSiteFilter,
+        num: '100',
+        gl: 'in',
+        lr: 'lang_en',
+      });
+      const resp = await fetch(`${GOOGLE_SEARCH_URL}?${params.toString()}`);
+      if (resp.ok) {
+        const data = (await resp.json()) as any;
+        const items: any[] = data.items || [];
+        const candidates: Candidate[] = items
+          .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
+          .map(i => ({
+            name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
+            snippet: i.snippet || '',
+            url: i.link,
+            location: null,
+          }));
+        addUniqueCandidates(candidates);
+      }
+    } catch (error) {
+      console.log('Google API error:', error);
     }
   }
+  
+  // Continue with other search engines if we still need more candidates
   async function scrapeDuckDuckGo(url: string): Promise<Candidate[]> {
     const resp = await fetch(url, {
       headers: {
@@ -657,7 +707,7 @@ async function searchLinkedInProfiles(query: string, num: number = 30): Promise<
     const out: Candidate[] = [];
     const anchorRegex = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
     let match;
-    while ((match = anchorRegex.exec(html)) && out.length < num) {
+    while ((match = anchorRegex.exec(html))) {
       const href = match[1];
       const title = match[2].replace(/<[^>]+>/g, '').trim();
       let url = href;
@@ -672,99 +722,139 @@ async function searchLinkedInProfiles(query: string, num: number = 30): Promise<
         out.push({ name: title || 'LinkedIn Profile', snippet: '', url, location: null });
       }
     }
-    if (out.length < num) {
-      const hrefRegex = /href=["']([^"']+)["']/gi;
-      let m;
-      while ((m = hrefRegex.exec(html)) && out.length < num) {
-        let raw = m[1];
-        let url = raw;
-        try {
-          const parsed = new URL(raw.startsWith('http') ? raw : `https://duckduckgo.com${raw}`);
-          const uddg = parsed.searchParams.get('uddg');
-          if (uddg) url = decodeURIComponent(uddg);
-        } catch {
-          url = decodeURIComponent(raw);
-        }
-        if (/linkedin\.com\/in\//i.test(url)) {
-          out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
-        }
+    
+    // Additional scraping for more links
+    const hrefRegex = /href=["']([^"']+)["']/gi;
+    let m;
+    while ((m = hrefRegex.exec(html))) {
+      let raw = m[1];
+      let url = raw;
+      try {
+        const parsed = new URL(raw.startsWith('http') ? raw : `https://duckduckgo.com${raw}`);
+        const uddg = parsed.searchParams.get('uddg');
+        if (uddg) url = decodeURIComponent(uddg);
+      } catch {
+        url = decodeURIComponent(raw);
+      }
+      if (/linkedin\.com\/in\//i.test(url)) {
+        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
       }
     }
     return out;
   }
 
-  const ddgPrimary = await scrapeDuckDuckGo(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`);
-  if (ddgPrimary.length >= 5) return ddgPrimary;
-  const ddgAlt = await scrapeDuckDuckGo(`https://duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`);
-  if (ddgAlt.length) return ddgAlt;
-  const ddgJinaUrl = `https://r.jina.ai/http://duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`;
-  const ddgJinaResp = await fetch(ddgJinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  if (ddgJinaResp.ok) {
-    const text = await ddgJinaResp.text();
-    const out: Candidate[] = [];
-    const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
-    const seen = new Set<string>();
-    let m;
-    while ((m = urlRegex.exec(text)) && out.length < num) {
-      const url = m[0].replace(/[,;]+$/, '');
-      if (!seen.has(url)) {
-        seen.add(url);
-        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
-      }
+  // Try DuckDuckGo
+  if (allCandidates.length < num) {
+    try {
+      const ddgPrimary = await scrapeDuckDuckGo(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`);
+      addUniqueCandidates(ddgPrimary);
+      
+      const ddgAlt = await scrapeDuckDuckGo(`https://duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`);
+      addUniqueCandidates(ddgAlt);
+    } catch (error) {
+      console.log('DuckDuckGo scraping error:', error);
     }
-    if (out.length) return out;
   }
-  const braveUrl = `https://r.jina.ai/http://search.brave.com/search?q=${encodeURIComponent(withSiteFilter)}&source=web`;
-  const braveResp = await fetch(braveUrl);
-  if (braveResp.ok) {
-    const text = await braveResp.text();
-    const out: Candidate[] = [];
-    const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
-    const seen = new Set<string>();
-    let m;
-    while ((m = urlRegex.exec(text)) && out.length < num) {
-      const url = m[0].replace(/[,;]+$/, '');
-      if (!seen.has(url)) {
-        seen.add(url);
-        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+
+  // Try Jina AI for enhanced scraping
+  if (allCandidates.length < num) {
+    try {
+      const ddgJinaUrl = `https://r.jina.ai/http://duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`;
+      const ddgJinaResp = await fetch(ddgJinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (ddgJinaResp.ok) {
+        const text = await ddgJinaResp.text();
+        const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
+        const candidates: Candidate[] = [];
+        let m;
+        while ((m = urlRegex.exec(text))) {
+          const url = m[0].replace(/[,;]+$/, '');
+          if (!seen.has(url)) {
+            seen.add(url);
+            candidates.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+          }
+        }
+        addUniqueCandidates(candidates);
       }
+    } catch (error) {
+      console.log('Jina DuckDuckGo error:', error);
     }
-    if (out.length) return out;
   }
-  const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(withSiteFilter)}&setlang=en`;
-  const bingResp = await fetch(bingUrl, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-IN,en;q=0.9' } });
-  if (bingResp.ok) {
-    const html = await bingResp.text();
-    const out: Candidate[] = [];
-    const linkRegex = /<h2>\s*<a\s+href=["']([^"']+)["'][^>]*>(.*?)<\/a>\s*<\/h2>/gi;
-    let m;
-    while ((m = linkRegex.exec(html)) && out.length < num) {
-      const href = m[1];
-      const title = m[2].replace(/<[^>]+>/g, '').trim();
-      if (/linkedin\.com\/in\//i.test(href)) {
-        out.push({ name: title || 'LinkedIn Profile', snippet: '', url: href, location: null });
+
+  // Try Brave Search
+  if (allCandidates.length < num) {
+    try {
+      const braveUrl = `https://r.jina.ai/http://search.brave.com/search?q=${encodeURIComponent(withSiteFilter)}&source=web`;
+      const braveResp = await fetch(braveUrl);
+      if (braveResp.ok) {
+        const text = await braveResp.text();
+        const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
+        const candidates: Candidate[] = [];
+        let m;
+        while ((m = urlRegex.exec(text))) {
+          const url = m[0].replace(/[,;]+$/, '');
+          if (!seen.has(url)) {
+            seen.add(url);
+            candidates.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+          }
+        }
+        addUniqueCandidates(candidates);
       }
+    } catch (error) {
+      console.log('Brave search error:', error);
     }
-    if (out.length) return out;
   }
-  const jinaUrl = `https://r.jina.ai/http://www.google.com/search?q=${encodeURIComponent(withSiteFilter)}&num=${Math.min(num,50)}&hl=en`;
-  const jinaResp = await fetch(jinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  if (jinaResp.ok) {
-    const text = await jinaResp.text();
-    const out: Candidate[] = [];
-    const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
-    const seen = new Set<string>();
-    let m;
-    while ((m = urlRegex.exec(text)) && out.length < num) {
-      const url = m[0].replace(/[,;]+$/, '');
-      if (!seen.has(url)) {
-        seen.add(url);
-        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+
+  // Try Bing Search
+  if (allCandidates.length < num) {
+    try {
+      const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(withSiteFilter)}&setlang=en`;
+      const bingResp = await fetch(bingUrl, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-IN,en;q=0.9' } });
+      if (bingResp.ok) {
+        const html = await bingResp.text();
+        const linkRegex = /<h2>\s*<a\s+href=["']([^"']+)["'][^>]*>(.*?)<\/a>\s*<\/h2>/gi;
+        let m;
+        const candidates: Candidate[] = [];
+        while ((m = linkRegex.exec(html))) {
+          const href = m[1];
+          const title = m[2].replace(/<[^>]+>/g, '').trim();
+          if (/linkedin\.com\/in\//i.test(href) && !seen.has(href)) {
+            seen.add(href);
+            candidates.push({ name: title || 'LinkedIn Profile', snippet: '', url: href, location: null });
+          }
+        }
+        addUniqueCandidates(candidates);
       }
+    } catch (error) {
+      console.log('Bing search error:', error);
     }
-    if (out.length) return out;
   }
-  return [];
+
+  // Try Google via Jina AI
+  if (allCandidates.length < num) {
+    try {
+      const jinaUrl = `https://r.jina.ai/http://www.google.com/search?q=${encodeURIComponent(withSiteFilter)}&num=100&hl=en`;
+      const jinaResp = await fetch(jinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (jinaResp.ok) {
+        const text = await jinaResp.text();
+        const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
+        const candidates: Candidate[] = [];
+        let m;
+        while ((m = urlRegex.exec(text))) {
+          const url = m[0].replace(/[,;]+$/, '');
+          if (!seen.has(url)) {
+            seen.add(url);
+            candidates.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+          }
+        }
+        addUniqueCandidates(candidates);
+      }
+    } catch (error) {
+      console.log('Jina Google search error:', error);
+    }
+  }
+  
+  console.log(`✅ Total candidates found: ${allCandidates.length}`);
+  return allCandidates.slice(0, num);
 }
 
 function simpleSimilarityScore(query: string, c: Candidate): number {
@@ -783,7 +873,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
     const { query, inputType = 'requirement' } = (req.body || {}) as { query?: string; inputType?: 'requirement' | 'jd' };
-    const num = Math.max(10, Math.min(200, Number((req.body || {}).num ?? 50)));
+    const num = Math.max(50, Math.min(500, Number((req.body || {}).num ?? 200)));
     const mode = ((req.body || {}).mode as 'default' | 'broad' | 'enhanced') ?? 'default';
     if (!query || typeof query !== 'string') {
       return res.status(400).json({ error: 'Missing query' });
@@ -861,19 +951,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     
-    const results = rawCandidates
-      .map(c => ({
-        ...c,
-        similarity: Math.round(simpleSimilarityScore(query, c) * 10000) / 100,
-      }))
-      .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
-      .slice(0, num);
+    // Remove similarity filtering - return all candidates as-is
+    // Just ensure we have unique candidates and limit to requested number
+    const uniqueCandidates = rawCandidates.slice(0, num);
 
     return res.status(200).json({
       query,
       inputType,
       xrayQuery,
-      results,
+      results: uniqueCandidates,
     });
   } catch (e: any) {
     return res.status(500).json({ error: e?.message || 'Internal Server Error' });

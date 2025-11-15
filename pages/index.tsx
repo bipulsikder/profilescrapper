@@ -18,8 +18,8 @@ export default function Home() {
   const [results, setResults] = useState<Result[]>([])
   const [inputType, setInputType] = useState<'requirement' | 'jd'>('requirement')
   const [xrayQuery, setXrayQuery] = useState<string>('')
-  const [visibleCount, setVisibleCount] = useState<number>(12)
-  const [maxNum, setMaxNum] = useState<number>(50)
+  const [visibleCount, setVisibleCount] = useState<number>(24)
+  const [maxNum, setMaxNum] = useState<number>(200)
 
   const doSearch = async (opts?: { mode?: 'default' | 'broad' | 'enhanced', num?: number }) => {
     if (!query.trim()) {
@@ -38,7 +38,7 @@ export default function Home() {
       const data = await resp.json()
       setResults(data.results || [])
       setXrayQuery(data.xrayQuery || '')
-      setVisibleCount(Math.min(12, (data.results || []).length))
+      setVisibleCount(Math.min(24, (data.results || []).length))
       toast.success(`Found ${data.results?.length || 0} matching candidates`)
     } catch (e: any) {
       toast.error(e.message || 'Search failed')
@@ -215,8 +215,10 @@ export default function Home() {
               >
                 <option value={50}>50</option>
                 <option value={100}>100</option>
-                <option value={150}>150</option>
                 <option value={200}>200</option>
+                <option value={300}>300</option>
+                <option value={400}>400</option>
+                <option value={500}>500</option>
               </select>
             </label>
             <span>Showing {Math.min(visibleCount, results.length)} of {results.length}</span>
@@ -231,7 +233,7 @@ export default function Home() {
               <h2 className="text-xl font-semibold text-white">Searching for candidates...</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="bg-white/5 backdrop-blur-sm rounded-xl p-4 animate-pulse">
                   <div className="h-4 bg-slate-700 rounded mb-3"></div>
                   <div className="h-3 bg-slate-700 rounded mb-2"></div>
@@ -290,16 +292,16 @@ export default function Home() {
             {results.length > visibleCount && (
               <div className="mt-6 flex items-center justify-center gap-4">
                 <button
-                  onClick={() => setVisibleCount(Math.min(visibleCount + 12, results.length))}
+                  onClick={() => setVisibleCount(Math.min(visibleCount + 24, results.length))}
                   className="bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg"
                 >
-                  Show More
+                  Show More (24)
                 </button>
                 <button
                   onClick={() => setVisibleCount(results.length)}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg"
                 >
-                  Show All
+                  Show All ({results.length - visibleCount} remaining)
                 </button>
               </div>
             )}
