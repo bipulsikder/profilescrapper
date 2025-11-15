@@ -3,12 +3,12 @@
   "buildCommand": "cd backend && npm install && npm run build && cd ../frontend && npm install && npm run build",
   "outputDirectory": "frontend/.next",
   "framework": "nextjs",
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 30
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/search"
     }
-  },
+  ],
   "env": {
     "NODE_ENV": "production"
   }
