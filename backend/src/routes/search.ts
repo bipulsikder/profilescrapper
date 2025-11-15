@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { GeminiService } from '../services/gemini';
 import { GoogleSearchService } from '../services/googleSearch';
 import { SupabaseService } from '../services/supabase';
@@ -7,7 +7,7 @@ import { SearchRequest, SearchResponse } from '../types';
 
 const router = Router();
 
-router.post('/', async (req, res, next) => {
+router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { query, inputType = 'requirement' }: SearchRequest = req.body;
     

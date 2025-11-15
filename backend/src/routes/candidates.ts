@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { SupabaseService } from '../services/supabase';
 import { GeminiService } from '../services/gemini';
 import { SaveCandidateRequest, Candidate } from '../types';
@@ -6,7 +6,7 @@ import { SaveCandidateRequest, Candidate } from '../types';
 const router = Router();
 
 // Get all candidates
-router.get('/', async (req, res, next) => {
+router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const candidates = await SupabaseService.fetchAllCandidates();
     res.json({ candidates });
@@ -16,7 +16,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // Save a candidate
-router.post('/save', async (req, res, next) => {
+router.post('/save', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, snippet, url, location, embedding }: SaveCandidateRequest = req.body;
     
@@ -53,7 +53,7 @@ router.post('/save', async (req, res, next) => {
 });
 
 // Get candidate by URL
-router.get('/check/:url(*)', async (req, res, next) => {
+router.get('/check/:url(*)', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const url = decodeURIComponent(req.params.url);
     const candidate = await SupabaseService.getCandidateByUrl(url);
