@@ -19,6 +19,7 @@ export default function Home() {
   const [inputType, setInputType] = useState<'requirement' | 'jd'>('requirement')
   const [xrayQuery, setXrayQuery] = useState<string>('')
   const [visibleCount, setVisibleCount] = useState<number>(12)
+  const [maxNum, setMaxNum] = useState<number>(50)
 
   const doSearch = async (opts?: { mode?: 'default' | 'broad', num?: number }) => {
     if (!query.trim()) {
@@ -31,7 +32,7 @@ export default function Home() {
       const resp = await fetch(`${apiUrl}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, inputType, mode: opts?.mode || 'default', num: opts?.num ?? 50 })
+        body: JSON.stringify({ query, inputType, mode: opts?.mode || 'default', num: opts?.num ?? maxNum })
       })
       if (!resp.ok) throw new Error(await resp.text())
       const data = await resp.json()
@@ -48,7 +49,7 @@ export default function Home() {
 
   const saveCandidate = async (c: Result) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
       const resp = await fetch(`${apiUrl}/api/candidates/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,7 +149,7 @@ export default function Home() {
                   ×
                 </button>
               )}
-            </div>
+        </div>
 
             {/* Action Buttons */}
             <div className="flex gap-3">
@@ -170,14 +171,14 @@ export default function Home() {
                 )}
               </button>
               <button
-                onClick={() => doSearch({ mode: 'default', num: 50 })}
+                onClick={() => doSearch({ mode: 'default', num: maxNum })}
                 disabled={loading || !query.trim()}
                 className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
               >
                 Regenerate X-Ray
               </button>
               <button
-                onClick={() => doSearch({ mode: 'broad', num: 100 })}
+                onClick={() => doSearch({ mode: 'broad', num: Math.max(100, maxNum) })}
                 disabled={loading || !query.trim()}
                 className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
               >
@@ -192,7 +193,7 @@ export default function Home() {
                 <Download className="w-4 h-4" />
                 Export CSV
               </button>
-            </div>
+          </div>
           </div>
 
           {/* X-Ray Query Display */}
@@ -204,6 +205,22 @@ export default function Home() {
               </p>
             </div>
           )}
+          <div className="mt-4 flex items-center gap-3 text-slate-300 text-sm">
+            <label className="flex items-center gap-2">
+              Max Candidates
+              <select
+                value={maxNum}
+                onChange={(e) => setMaxNum(Number(e.target.value))}
+                className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white"
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={150}>150</option>
+                <option value={200}>200</option>
+              </select>
+            </label>
+            <span>Showing {Math.min(visibleCount, results.length)} of {results.length}</span>
+          </div>
         </div>
 
         {/* Results Section */}
