@@ -28,8 +28,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Import routes
-const searchRouter = require('../backend/dist/routes/search.js');
-const candidatesRouter = require('../backend/dist/routes/candidates.js');
+const searchRouter = require('./backend/dist/routes/search.js');
+const candidatesRouter = require('./backend/dist/routes/candidates.js');
 
 // API routes
 app.use('/api/search', searchRouter);
