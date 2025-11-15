@@ -1,12 +1,29 @@
 {
   "version": 2,
-  "buildCommand": "cd backend && npm install && npm run build && cd ../frontend && npm install && npm run build",
-  "outputDirectory": "frontend/.next",
-  "framework": "nextjs",
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/search"
+      "src": "backend/package.json",
+      "use": "@vercel/node",
+      "config": {
+        "distDir": "backend/dist"
+      }
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/search.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
     }
   ],
   "env": {
