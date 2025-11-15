@@ -1,7 +1,14 @@
-node_modules
-build
-dist
-.git
-.trae
-.log
-.figma
+# Exclude backend directory from Vercel deployment
+backend/
+backend/*
+backend/**/*
+
+# Exclude Python virtual environment
+.venv/
+.venv/*
+.venv/**/*
+
+# Exclude other unnecessary files
+*.log
+.env.local
+.env.*.local
