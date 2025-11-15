@@ -783,15 +783,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
     const { query, inputType = 'requirement' } = (req.body || {}) as { query?: string; inputType?: 'requirement' | 'jd' };
+    const num = Math.max(10, Math.min(200, Number((req.body || {}).num ?? 50)));
+    const mode = ((req.body || {}).mode as 'default' | 'broad') ?? 'default';
     if (!query || typeof query !== 'string') {
       return res.status(400).json({ error: 'Missing query' });
     }
 
     const xrayQuery = await GeminiService.generateXrayQuery(query, inputType);
-    let rawCandidates = await searchLinkedInProfiles(xrayQuery, 40);
-    if (rawCandidates.length < 10) {
+    let rawCandidates = await searchLinkedInProfiles(xrayQuery, num);
+    if (mode === 'broad' || rawCandidates.length < Math.min(10, num)) {
       const fallbackQuery = GeminiService.generateIntelligentFallback(query, null);
-      const more = await searchLinkedInProfiles(fallbackQuery, 50);
+      const more = await searchLinkedInProfiles(fallbackQuery, Math.min(2 * num, 200));
       const seen = new Set(rawCandidates.map(c => c.url));
       for (const c of more) {
         if (!seen.has(c.url)) {
@@ -800,7 +802,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
     }
-    if (rawCandidates.length < 10) {
+    if (mode === 'broad' && rawCandidates.length < num) {
       const tokens: string[] = [];
       const text = query.toLowerCase();
       const addIf = (word: string, ...aliases: string[]) => {
@@ -816,7 +818,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const locMatch = query.match(/\b(Delhi|New Delhi|NCR|Gurgaon|Noida|Mumbai|Bangalore|Bengaluru|Hyderabad|Pune)\b/i);
       const loc = locMatch ? locMatch[0] : '';
       const broadQuery = `site:linkedin.com/in (${tokens.length ? tokens.map(t => `"${t}"`).join(' OR ') : 'professional'})${loc ? ` AND (${loc})` : ''}`;
-      const more = await searchLinkedInProfiles(broadQuery, 50);
+      const more = await searchLinkedInProfiles(broadQuery, Math.min(2 * num, 200));
       const seen = new Set(rawCandidates.map(c => c.url));
       for (const c of more) {
         if (!seen.has(c.url)) {
@@ -831,7 +833,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         similarity: Math.round(simpleSimilarityScore(query, c) * 10000) / 100,
       }))
       .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
-      .slice(0, 50);
+      .slice(0, num);
 
     return res.status(200).json({
       query,

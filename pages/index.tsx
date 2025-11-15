@@ -18,8 +18,9 @@ export default function Home() {
   const [results, setResults] = useState<Result[]>([])
   const [inputType, setInputType] = useState<'requirement' | 'jd'>('requirement')
   const [xrayQuery, setXrayQuery] = useState<string>('')
+  const [visibleCount, setVisibleCount] = useState<number>(12)
 
-  const doSearch = async () => {
+  const doSearch = async (opts?: { mode?: 'default' | 'broad', num?: number }) => {
     if (!query.trim()) {
       toast.error('Please enter a hiring requirement')
       return
@@ -30,12 +31,13 @@ export default function Home() {
       const resp = await fetch(`${apiUrl}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, inputType })
+        body: JSON.stringify({ query, inputType, mode: opts?.mode || 'default', num: opts?.num ?? 50 })
       })
       if (!resp.ok) throw new Error(await resp.text())
       const data = await resp.json()
       setResults(data.results || [])
       setXrayQuery(data.xrayQuery || '')
+      setVisibleCount(Math.min(12, (data.results || []).length))
       toast.success(`Found ${data.results?.length || 0} matching candidates`)
     } catch (e: any) {
       toast.error(e.message || 'Search failed')
@@ -151,7 +153,7 @@ export default function Home() {
             {/* Action Buttons */}
             <div className="flex gap-3">
               <button
-                onClick={doSearch}
+                onClick={() => doSearch()}
                 disabled={loading || !query.trim()}
                 className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:cursor-not-allowed"
               >
@@ -166,6 +168,20 @@ export default function Home() {
                     Find Candidates
                   </>
                 )}
+              </button>
+              <button
+                onClick={() => doSearch({ mode: 'default', num: 50 })}
+                disabled={loading || !query.trim()}
+                className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
+              >
+                Regenerate X-Ray
+              </button>
+              <button
+                onClick={() => doSearch({ mode: 'broad', num: 100 })}
+                disabled={loading || !query.trim()}
+                className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
+              >
+                Find More
               </button>
               
               <button
@@ -222,7 +238,7 @@ export default function Home() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {results.map((candidate, index) => (
+              {results.slice(0, visibleCount).map((candidate, index) => (
                 <CandidateCard
                   key={`${candidate.url}-${index}`}
                   name={candidate.name}
@@ -235,6 +251,22 @@ export default function Home() {
                 />
               ))}
             </div>
+            {results.length > visibleCount && (
+              <div className="mt-6 flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setVisibleCount(Math.min(visibleCount + 12, results.length))}
+                  className="bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg"
+                >
+                  Show More
+                </button>
+                <button
+                  onClick={() => setVisibleCount(results.length)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg"
+                >
+                  Show All
+                </button>
+              </div>
+            )}
           </div>
         )}
 
