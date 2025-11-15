@@ -6,6 +6,7 @@ const GOOGLE_SEARCH_URL = 'https://www.googleapis.com/customsearch/v1';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const GOOGLE_CX_ID = process.env.GOOGLE_CX_ID || '';
+const SERPAPI_KEY = process.env.SERPAPI_KEY || '';
 
 export class GeminiService {
   private static readonly EMBED_URL = GEMINI_EMBED_URL;
@@ -602,6 +603,23 @@ type Candidate = {
 
 async function searchLinkedInProfiles(query: string, num: number = 30): Promise<Candidate[]> {
   const withSiteFilter = /site:\s*linkedin\.com\/in/i.test(query) ? query : `site:linkedin.com/in ${query}`;
+  if (SERPAPI_KEY) {
+    const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(withSiteFilter)}&num=${Math.min(num, 50)}&hl=en&gl=in&api_key=${SERPAPI_KEY}`;
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const data = await resp.json() as any;
+      const items: any[] = data.organic_results || [];
+      const candidates: Candidate[] = items
+        .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
+        .map(i => ({
+          name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
+          snippet: i.snippet || i.description || '',
+          url: i.link,
+          location: null,
+        }));
+      if (candidates.length) return candidates.slice(0, num);
+    }
+  }
   if (GOOGLE_API_KEY && GOOGLE_CX_ID) {
     const params = new URLSearchParams({
       key: GOOGLE_API_KEY,
@@ -683,6 +701,23 @@ async function searchLinkedInProfiles(query: string, num: number = 30): Promise<
   const ddgJinaResp = await fetch(ddgJinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (ddgJinaResp.ok) {
     const text = await ddgJinaResp.text();
+    const out: Candidate[] = [];
+    const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
+    const seen = new Set<string>();
+    let m;
+    while ((m = urlRegex.exec(text)) && out.length < num) {
+      const url = m[0].replace(/[,;]+$/, '');
+      if (!seen.has(url)) {
+        seen.add(url);
+        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+      }
+    }
+    if (out.length) return out;
+  }
+  const braveUrl = `https://r.jina.ai/http://search.brave.com/search?q=${encodeURIComponent(withSiteFilter)}&source=web`;
+  const braveResp = await fetch(braveUrl);
+  if (braveResp.ok) {
+    const text = await braveResp.text();
     const out: Candidate[] = [];
     const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
     const seen = new Set<string>();
