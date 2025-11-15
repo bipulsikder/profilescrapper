@@ -784,14 +784,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const { query, inputType = 'requirement' } = (req.body || {}) as { query?: string; inputType?: 'requirement' | 'jd' };
     const num = Math.max(10, Math.min(200, Number((req.body || {}).num ?? 50)));
-    const mode = ((req.body || {}).mode as 'default' | 'broad') ?? 'default';
+    const mode = ((req.body || {}).mode as 'default' | 'broad' | 'enhanced') ?? 'default';
     if (!query || typeof query !== 'string') {
       return res.status(400).json({ error: 'Missing query' });
     }
 
-    const xrayQuery = await GeminiService.generateXrayQuery(query, inputType);
+    let xrayQuery = await GeminiService.generateXrayQuery(query, inputType);
     let rawCandidates = await searchLinkedInProfiles(xrayQuery, num);
-    if (mode === 'broad' || rawCandidates.length < Math.min(10, num)) {
+    
+    if (mode === 'enhanced') {
+      // Enhanced mode: Generate multiple variations of the query and combine results
+      console.log('🔧 Enhanced mode: Generating multiple query variations for better candidates');
+      
+      // Generate a more specific query by enhancing the original requirement
+      const enhancedRequirement = `${query} AND ("senior" OR "lead" OR "principal" OR "head" OR "director") AND ("5+ years" OR "6+ years" OR "7+ years" OR "8+ years" OR "9+ years" OR "10+ years")`;
+      const enhancedQuery = await GeminiService.generateXrayQuery(enhancedRequirement, inputType);
+      const enhancedCandidates = await searchLinkedInProfiles(enhancedQuery, Math.min(2 * num, 200));
+      
+      // Generate a broader query for more candidates
+      const broaderRequirement = `${query.split(' ').slice(0, 5).join(' ')} AND ("experienced" OR "professional" OR "expert")`;
+      const broaderQuery = await GeminiService.generateXrayQuery(broaderRequirement, inputType);
+      const broaderCandidates = await searchLinkedInProfiles(broaderQuery, Math.min(2 * num, 200));
+      
+      // Combine all results and deduplicate
+      const allCandidates = [...rawCandidates, ...enhancedCandidates, ...broaderCandidates];
+      const seen = new Set<string>();
+      rawCandidates = [];
+      
+      for (const candidate of allCandidates) {
+        if (!seen.has(candidate.url)) {
+          seen.add(candidate.url);
+          rawCandidates.push(candidate);
+        }
+      }
+      
+      // Update xrayQuery to show the enhanced approach was used
+      xrayQuery = `${enhancedQuery} | ${broaderQuery}`;
+      console.log(`✅ Enhanced mode completed with ${rawCandidates.length} unique candidates`);
+    }
+    
+    if (mode === 'broad' || (mode === 'default' && rawCandidates.length < Math.min(10, num))) {
       const fallbackQuery = GeminiService.generateIntelligentFallback(query, null);
       const more = await searchLinkedInProfiles(fallbackQuery, Math.min(2 * num, 200));
       const seen = new Set(rawCandidates.map(c => c.url));
@@ -802,6 +834,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
     }
+    
     if (mode === 'broad' && rawCandidates.length < num) {
       const tokens: string[] = [];
       const text = query.toLowerCase();
@@ -827,6 +860,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
     }
+    
     const results = rawCandidates
       .map(c => ({
         ...c,

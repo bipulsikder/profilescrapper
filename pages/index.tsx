@@ -21,7 +21,7 @@ export default function Home() {
   const [visibleCount, setVisibleCount] = useState<number>(12)
   const [maxNum, setMaxNum] = useState<number>(50)
 
-  const doSearch = async (opts?: { mode?: 'default' | 'broad', num?: number }) => {
+  const doSearch = async (opts?: { mode?: 'default' | 'broad' | 'enhanced', num?: number }) => {
     if (!query.trim()) {
       toast.error('Please enter a hiring requirement')
       return
@@ -249,8 +249,27 @@ export default function Home() {
               <h2 className="text-2xl font-bold text-white">
                 Top Candidates ({results.length})
               </h2>
-              <div className="text-slate-300 text-sm">
-                Sorted by relevance score
+              <div className="flex items-center gap-3">
+                <div className="text-slate-300 text-sm">
+                  Sorted by relevance score
+                </div>
+                <button
+                  onClick={() => doSearch({ mode: 'enhanced', num: Math.max(100, maxNum) })}
+                  disabled={loading}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Enhancing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Get Better Candidates
+                    </>
+                  )}
+                </button>
               </div>
             </div>
             
