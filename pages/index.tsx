@@ -67,17 +67,17 @@ export default function Home() {
       <Toaster position="top-right" />
       
       {/* Header */}
-      <header className="py-12 text-center">
+      {/* <header className="py-12 text-center">
         <div className="max-w-4xl mx-auto px-4">
           <div className="flex items-center justify-center gap-3 mb-4">
-            {/* <Sparkles className="w-8 h-8 text-purple-400" /> */}
+            <Sparkles className="w-8 h-8 text-purple-400" />
             <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
               Truckinzy
             </h1>
           </div>
-          {/* <p className="text-slate-300 text-lg">
+          <p className="text-slate-300 text-lg">
             AI-Powered Candidate Discovery with Advanced X-Ray Search
-          </p> */}
+          </p>
           <div className="flex items-center justify-center gap-6 mt-4 text-sm text-slate-400">
             <div className="flex items-center gap-2">
               <Search className="w-4 h-4" />
@@ -93,7 +93,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </header>
+      </header> */}
 
       <main className="max-w-6xl mx-auto px-4">
         {/* Search Interface */}
