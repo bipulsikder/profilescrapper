@@ -626,8 +626,8 @@ async function searchLinkedInProfiles(query: string, num: number = 30): Promise<
       if (candidates.length) return candidates;
     }
   }
-  const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}`;
-  const ddgResp = await fetch(ddgUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`;
+  const ddgResp = await fetch(ddgUrl, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-IN,en;q=0.9' } });
   if (!ddgResp.ok) return [];
   const html = await ddgResp.text();
   const links: Candidate[] = [];
@@ -636,7 +636,14 @@ async function searchLinkedInProfiles(query: string, num: number = 30): Promise<
   while ((match = anchorRegex.exec(html)) && links.length < num) {
     const href = match[1];
     const title = match[2].replace(/<[^>]+>/g, '').trim();
-    const url = decodeURIComponent(href);
+    let url = href;
+    try {
+      const parsed = new URL(href, 'https://html.duckduckgo.com');
+      const uddg = parsed.searchParams.get('uddg');
+      if (uddg) url = decodeURIComponent(uddg);
+    } catch {
+      url = decodeURIComponent(href);
+    }
     if (/linkedin\.com\/in\//i.test(url)) {
       links.push({ name: title || 'LinkedIn Profile', snippet: '', url, location: null });
     }
