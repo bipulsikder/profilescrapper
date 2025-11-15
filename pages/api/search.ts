@@ -206,7 +206,7 @@ export class GeminiService {
     }
   }
 
-  private static generateIntelligentFallback(requirement: string, locationHint: string | null): string {
+  static generateIntelligentFallback(requirement: string, locationHint: string | null): string {
     console.log('🔄 Generating intelligent fallback with deep pattern analysis');
     
     // Enhanced fallback with requirement complexity assessment
@@ -626,29 +626,110 @@ async function searchLinkedInProfiles(query: string, num: number = 30): Promise<
       if (candidates.length) return candidates;
     }
   }
-  const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`;
-  const ddgResp = await fetch(ddgUrl, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-IN,en;q=0.9' } });
-  if (!ddgResp.ok) return [];
-  const html = await ddgResp.text();
-  const links: Candidate[] = [];
-  const anchorRegex = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
-  let match;
-  while ((match = anchorRegex.exec(html)) && links.length < num) {
-    const href = match[1];
-    const title = match[2].replace(/<[^>]+>/g, '').trim();
-    let url = href;
-    try {
-      const parsed = new URL(href, 'https://html.duckduckgo.com');
-      const uddg = parsed.searchParams.get('uddg');
-      if (uddg) url = decodeURIComponent(uddg);
-    } catch {
-      url = decodeURIComponent(href);
+  async function scrapeDuckDuckGo(url: string): Promise<Candidate[]> {
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'en-IN,en;q=0.9',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    if (!resp.ok) return [];
+    const html = await resp.text();
+    const out: Candidate[] = [];
+    const anchorRegex = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+    let match;
+    while ((match = anchorRegex.exec(html)) && out.length < num) {
+      const href = match[1];
+      const title = match[2].replace(/<[^>]+>/g, '').trim();
+      let url = href;
+      try {
+        const parsed = new URL(href.startsWith('http') ? href : `https://duckduckgo.com${href}`);
+        const uddg = parsed.searchParams.get('uddg');
+        if (uddg) url = decodeURIComponent(uddg);
+      } catch {
+        url = decodeURIComponent(href);
+      }
+      if (/linkedin\.com\/in\//i.test(url)) {
+        out.push({ name: title || 'LinkedIn Profile', snippet: '', url, location: null });
+      }
     }
-    if (/linkedin\.com\/in\//i.test(url)) {
-      links.push({ name: title || 'LinkedIn Profile', snippet: '', url, location: null });
+    if (out.length < num) {
+      const hrefRegex = /href=["']([^"']+)["']/gi;
+      let m;
+      while ((m = hrefRegex.exec(html)) && out.length < num) {
+        let raw = m[1];
+        let url = raw;
+        try {
+          const parsed = new URL(raw.startsWith('http') ? raw : `https://duckduckgo.com${raw}`);
+          const uddg = parsed.searchParams.get('uddg');
+          if (uddg) url = decodeURIComponent(uddg);
+        } catch {
+          url = decodeURIComponent(raw);
+        }
+        if (/linkedin\.com\/in\//i.test(url)) {
+          out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+        }
+      }
     }
+    return out;
   }
-  return links;
+
+  const ddgPrimary = await scrapeDuckDuckGo(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`);
+  if (ddgPrimary.length >= 5) return ddgPrimary;
+  const ddgAlt = await scrapeDuckDuckGo(`https://duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`);
+  if (ddgAlt.length) return ddgAlt;
+  const ddgJinaUrl = `https://r.jina.ai/http://duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}&ia=web`;
+  const ddgJinaResp = await fetch(ddgJinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (ddgJinaResp.ok) {
+    const text = await ddgJinaResp.text();
+    const out: Candidate[] = [];
+    const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
+    const seen = new Set<string>();
+    let m;
+    while ((m = urlRegex.exec(text)) && out.length < num) {
+      const url = m[0].replace(/[,;]+$/, '');
+      if (!seen.has(url)) {
+        seen.add(url);
+        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+      }
+    }
+    if (out.length) return out;
+  }
+  const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(withSiteFilter)}&setlang=en`;
+  const bingResp = await fetch(bingUrl, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-IN,en;q=0.9' } });
+  if (bingResp.ok) {
+    const html = await bingResp.text();
+    const out: Candidate[] = [];
+    const linkRegex = /<h2>\s*<a\s+href=["']([^"']+)["'][^>]*>(.*?)<\/a>\s*<\/h2>/gi;
+    let m;
+    while ((m = linkRegex.exec(html)) && out.length < num) {
+      const href = m[1];
+      const title = m[2].replace(/<[^>]+>/g, '').trim();
+      if (/linkedin\.com\/in\//i.test(href)) {
+        out.push({ name: title || 'LinkedIn Profile', snippet: '', url: href, location: null });
+      }
+    }
+    if (out.length) return out;
+  }
+  const jinaUrl = `https://r.jina.ai/http://www.google.com/search?q=${encodeURIComponent(withSiteFilter)}&num=${Math.min(num,50)}&hl=en`;
+  const jinaResp = await fetch(jinaUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (jinaResp.ok) {
+    const text = await jinaResp.text();
+    const out: Candidate[] = [];
+    const urlRegex = /https?:\/\/[a-z.]*linkedin\.com\/in\/[^\s\)\"]+/gi;
+    const seen = new Set<string>();
+    let m;
+    while ((m = urlRegex.exec(text)) && out.length < num) {
+      const url = m[0].replace(/[,;]+$/, '');
+      if (!seen.has(url)) {
+        seen.add(url);
+        out.push({ name: 'LinkedIn Profile', snippet: '', url, location: null });
+      }
+    }
+    if (out.length) return out;
+  }
+  return [];
 }
 
 function simpleSimilarityScore(query: string, c: Candidate): number {
@@ -672,7 +753,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const xrayQuery = await GeminiService.generateXrayQuery(query, inputType);
-    const rawCandidates = await searchLinkedInProfiles(xrayQuery, 40);
+    let rawCandidates = await searchLinkedInProfiles(xrayQuery, 40);
+    if (rawCandidates.length < 10) {
+      const fallbackQuery = GeminiService.generateIntelligentFallback(query, null);
+      const more = await searchLinkedInProfiles(fallbackQuery, 50);
+      const seen = new Set(rawCandidates.map(c => c.url));
+      for (const c of more) {
+        if (!seen.has(c.url)) {
+          rawCandidates.push(c);
+          seen.add(c.url);
+        }
+      }
+    }
+    if (rawCandidates.length < 10) {
+      const tokens: string[] = [];
+      const text = query.toLowerCase();
+      const addIf = (word: string, ...aliases: string[]) => {
+        if (text.includes(word) || aliases.some(a => text.includes(a))) tokens.push(word);
+      };
+      addIf('rail', 'railway');
+      addIf('logistics');
+      addIf('transportation', 'transport');
+      addIf('business development', 'bd');
+      addIf('operations', 'ops');
+      addIf('sap');
+      addIf('stakeholder management', 'stakeholder');
+      const locMatch = query.match(/\b(Delhi|New Delhi|NCR|Gurgaon|Noida|Mumbai|Bangalore|Bengaluru|Hyderabad|Pune)\b/i);
+      const loc = locMatch ? locMatch[0] : '';
+      const broadQuery = `site:linkedin.com/in (${tokens.length ? tokens.map(t => `"${t}"`).join(' OR ') : 'professional'})${loc ? ` AND (${loc})` : ''}`;
+      const more = await searchLinkedInProfiles(broadQuery, 50);
+      const seen = new Set(rawCandidates.map(c => c.url));
+      for (const c of more) {
+        if (!seen.has(c.url)) {
+          rawCandidates.push(c);
+          seen.add(c.url);
+        }
+      }
+    }
     const results = rawCandidates
       .map(c => ({
         ...c,
