@@ -2,21 +2,13 @@
   "version": 2,
   "buildCommand": "cd backend && npm install && npm run build && cd ../frontend && npm install && npm run build",
   "outputDirectory": "frontend/.next",
-  "installCommand": "npm install",
-  "devCommand": "npm run dev",
   "framework": "nextjs",
   "functions": {
-    "backend/dist/index.vercel.js": {
+    "api/*.js": {
       "runtime": "nodejs20.x",
       "maxDuration": 30
     }
   },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "backend/dist/index.vercel.js"
-    }
-  ],
   "env": {
     "NODE_ENV": "production"
   }
