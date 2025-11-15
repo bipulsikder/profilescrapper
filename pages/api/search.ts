@@ -601,26 +601,47 @@ type Candidate = {
 };
 
 async function searchLinkedInProfiles(query: string, num: number = 30): Promise<Candidate[]> {
-  if (!GOOGLE_API_KEY || !GOOGLE_CX_ID) return [];
-  const params = new URLSearchParams({
-    key: GOOGLE_API_KEY,
-    cx: GOOGLE_CX_ID,
-    q: query,
-    num: String(Math.min(num, 50)),
-  });
-  const resp = await fetch(`${GOOGLE_SEARCH_URL}?${params.toString()}`);
-  if (!resp.ok) return [];
-  const data = await resp.json() as any;
-  const items: any[] = data.items || [];
-  const candidates: Candidate[] = items
-    .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
-    .map(i => ({
-      name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
-      snippet: i.snippet || '',
-      url: i.link,
-      location: null,
-    }));
-  return candidates;
+  const withSiteFilter = /site:\s*linkedin\.com\/in/i.test(query) ? query : `site:linkedin.com/in ${query}`;
+  if (GOOGLE_API_KEY && GOOGLE_CX_ID) {
+    const params = new URLSearchParams({
+      key: GOOGLE_API_KEY,
+      cx: GOOGLE_CX_ID,
+      q: withSiteFilter,
+      num: String(Math.min(num, 50)),
+      gl: 'in',
+      lr: 'lang_en',
+    });
+    const resp = await fetch(`${GOOGLE_SEARCH_URL}?${params.toString()}`);
+    if (resp.ok) {
+      const data = (await resp.json()) as any;
+      const items: any[] = data.items || [];
+      const candidates: Candidate[] = items
+        .filter(i => typeof i.link === 'string' && /linkedin\.com\/in\//i.test(i.link))
+        .map(i => ({
+          name: (i.title || '').replace(/\s+-\s*LinkedIn$/i, '').trim(),
+          snippet: i.snippet || '',
+          url: i.link,
+          location: null,
+        }));
+      if (candidates.length) return candidates;
+    }
+  }
+  const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(withSiteFilter)}`;
+  const ddgResp = await fetch(ddgUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!ddgResp.ok) return [];
+  const html = await ddgResp.text();
+  const links: Candidate[] = [];
+  const anchorRegex = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+  let match;
+  while ((match = anchorRegex.exec(html)) && links.length < num) {
+    const href = match[1];
+    const title = match[2].replace(/<[^>]+>/g, '').trim();
+    const url = decodeURIComponent(href);
+    if (/linkedin\.com\/in\//i.test(url)) {
+      links.push({ name: title || 'LinkedIn Profile', snippet: '', url, location: null });
+    }
+  }
+  return links;
 }
 
 function simpleSimilarityScore(query: string, c: Candidate): number {
